@@ -1,3 +1,6 @@
+<img width="600" height="456" alt="image" src="https://github.com/user-attachments/assets/f92a2c76-a19c-459e-9dbe-cd72a4c6c049" />
+
+
 🎛️ Compression Visualizer
 
 A real-time, browser-based DSP compressor designed to help producers visually understand how Attack, Release, Threshold, and Ratio affect an audio waveform.
