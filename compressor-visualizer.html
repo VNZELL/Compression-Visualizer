@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pro Macro Compressor (Black Box Edition)</title>
+    <style>
+        body { background: #000000; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; user-select: none; }
+        
+        /* Sleek Black Box Chassis */
+        .container { 
+            background: #0a0a0a; 
+            padding: 25px; border-radius: 8px; width: 100%; max-width: 900px; 
+            box-shadow: 0 15px 40px rgba(0,0,0,1);
+            border: 1px solid #1a1a1a;
+        }
+        
+        h2 { color: #fff; margin-top: 0; text-align: center; font-weight: 300; letter-spacing: 2px; }
+        
+        .top-bar { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
+        input[type="file"], select, button { 
+            padding: 10px; border-radius: 4px; border: 1px solid #222; 
+            background: #111; color: #aaa; font-family: inherit; font-weight: bold; cursor: pointer; 
+            transition: 0.2s;
+        }
+        input[type="file"] { cursor: default; font-weight: normal; }
+        button { background: #1a1a1a; color: #fff; flex-grow: 1; }
+        button:hover { background: #222; }
+        button.active { 
+            background: #111; color: #ff3333; 
+            border-color: #ff3333; box-shadow: inset 0 0 10px rgba(255, 51, 51, 0.2);
+        }
+        
+        .instructions { font-size: 12px; color: #555; margin-bottom: 20px; text-align: center; text-transform: uppercase; letter-spacing: 1px; }
+        .instructions span { color: #ff3333; }
+
+        /* Dark Mode Analog Meter */
+        .meter-wrapper { display: flex; justify-content: center; margin-bottom: 20px; }
+        #analogMeter {
+            background: radial-gradient(circle at 50% 120%, #1a1a1a, #0a0a0a, #000);
+            border: 2px solid #222;
+            border-radius: 8px;
+            box-shadow: inset 0 5px 15px rgba(0,0,0,1), 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        .screen-container { 
+            position: relative; width: 100%; height: 200px; margin-bottom: 20px; 
+            background: #050505; border: 1px solid #222; border-radius: 4px; cursor: crosshair; overflow: hidden; 
+        }
+        canvas.screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        
+        .controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; }
+        
+        /* Matte Black Modules */
+        .module-container { 
+            display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+            background: #111; 
+            padding: 15px 10px; border-radius: 6px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            border: 1px solid #1a1a1a; height: 140px;
+        }
+        
+        .module-label { font-size: 11px; font-weight: bold; color: #777; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
+        .module-value { font-size: 12px; font-weight: bold; color: #ddd; margin-top: 5px; text-align: center; }
+        
+        /* Stealth Knobs */
+        .knob-dial {
+            width: 56px; height: 56px; border-radius: 50%;
+            background: linear-gradient(135deg, #1f1f1f, #0a0a0a);
+            border: 1px solid #000;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.9), inset 0 1px 1px rgba(255,255,255,0.05);
+            position: relative; cursor: ns-resize; margin: auto 0;
+        }
+        
+        /* Glowing Red LED Indicators */
+        .knob-indicator {
+            position: absolute; top: 4px; left: 50%;
+            width: 4px; height: 12px; background: #ff3333;
+            border-radius: 2px; transform: translateX(-50%);
+            box-shadow: 0 0 8px #ff3333;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Compression Visualizer</h2>
+    
+    <div class="top-bar">
+        <input type="file" id="audioUpload" accept="audio/*">
+        <select id="loopSelect">
+            <option value="1">Full Sample</option>
+            <option value="0.5">1/2 Loop</option>
+            <option value="0.25">1/4 Loop</option>
+            <option value="0.125">1/8 Loop</option>
+        </select>
+        <button id="playBtn">POWER / PLAY</button>
+    </div>
+
+    <div class="instructions">🖱️ <span>Click</span> Seek | <span>Drag</span> Loop | <span>Wheel</span> Zoom Time | <span>Ctrl+Wheel</span> Zoom Amp | <span>Space</span> Play</div>
+
+    <div class="meter-wrapper">
+        <canvas id="analogMeter" width="280" height="130"></canvas>
+    </div>
+
+    <div class="screen-container">
+        <canvas id="waveCanvas" class="screen" width="850" height="200"></canvas>
+        <canvas id="playheadCanvas" class="screen" width="850" height="200"></canvas>
+    </div>
+    
+    <div class="controls">
+        <div class="module-container" id="thresh" data-min="-60" data-max="0" data-step="1" data-val="-24">
+            <div class="module-label">Threshold</div>
+            <div class="knob-dial"><div class="knob-indicator"></div></div>
+            <div class="module-value" id="threshVal">-24 dB</div>
+        </div>
+        <div class="module-container" id="ratio" data-min="1" data-max="20" data-step="1" data-val="8">
+            <div class="module-label">Ratio</div>
+            <div class="knob-dial"><div class="knob-indicator"></div></div>
+            <div class="module-value" id="ratioVal">8:1</div>
+        </div>
+        <div class="module-container" id="attack" data-min="0" data-max="100" data-step="1" data-val="3">
+            <div class="module-label">Attack</div>
+            <div class="knob-dial"><div class="knob-indicator"></div></div>
+            <div class="module-value" id="attackVal">3 ms</div>
+        </div>
+        <div class="module-container" id="release" data-min="10" data-max="1000" data-step="10" data-val="250">
+            <div class="module-label">Release</div>
+            <div class="knob-dial"><div class="knob-indicator"></div></div>
+            <div class="module-value" id="releaseVal">250 ms</div>
+        </div>
+        <div class="module-container" id="gain" data-min="-12" data-max="24" data-step="1" data-val="0">
+            <div class="module-label">Makeup</div>
+            <div class="knob-dial"><div class="knob-indicator"></div></div>
+            <div class="module-value" id="gainVal">0 dB</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let audioCtx, sourceNode, audioBuffer, processedBuffer;
+    let isPlaying = false;
+    let startTime = 0;
+    let loopDuration = 0;
+    let animationId;
+    let renderTimeout; 
+    
+    // Live Audio & Meter Variables
+    let compParams = { thresh: -24, ratio: 8, attack: 0.003, release: 0.250, makeup: 1 };
+    window.liveProcessor = null; 
+    window.currentLiveGR = 0;    
+    let liveEnvGrDb = 0;         
+    let visualNeedleGR = 0; 
+    
+    let viewStart = 0; 
+    let viewScale = 1; 
+    let viewScaleY = 1; 
+
+    let selStart = 0; 
+    let selEnd = 1;
+    let isDragging = false;
+    let dragStartX = 0;
+    let isDrawPending = false; // Mouse Lag Fix
+
+    const LN10_20 = 8.685889638065035; 
+    const DB_2_LN = 0.11512925464970228; 
+
+    const waveCanvas = document.getElementById('waveCanvas');
+    const waveCtx = waveCanvas.getContext('2d');
+    const playCanvas = document.getElementById('playheadCanvas');
+    const playCtx = playCanvas.getContext('2d');
+    
+    const meterCanvas = document.getElementById('analogMeter');
+    const meterCtx = meterCanvas.getContext('2d');
+    
+    const playBtn = document.getElementById('playBtn');
+    const fileInput = document.getElementById('audioUpload');
+    const loopSelect = document.getElementById('loopSelect');
+
+    // --- PIXEL-PERFECT MOUSE MATH ---
+    function getAudioPosFromMouse(e) {
+        const rect = playCanvas.getBoundingClientRect();
+        const screenPct = (e.clientX - rect.left) / rect.width;
+        return viewStart + (screenPct / viewScale);
+    }
+    function audioToScreen(pct) {
+        return (pct - viewStart) * viewScale * playCanvas.width;
+    }
+
+    // --- UI Hardware Knobs Logic ---
+    const getVal = (id) => parseFloat(document.getElementById(id).dataset.val);
+    const knobs = document.querySelectorAll('.module-container[id]'); 
+    
+    knobs.forEach(knob => {
+        let min = parseFloat(knob.dataset.min);
+        let max = parseFloat(knob.dataset.max);
+        let step = parseFloat(knob.dataset.step);
+        let val = parseFloat(knob.dataset.val);
+        let dial = knob.querySelector('.knob-dial');
+        
+        knob.updatePosition = function(newVal, triggerUpdate = true) {
+            val = Math.max(min, Math.min(max, newVal));
+            val = Math.round(val / step) * step; 
+            knob.dataset.val = val;
+            
+            let pct = (val - min) / (max - min);
+            let angle = -135 + (pct * 270);
+            dial.style.transform = `rotate(${angle}deg)`;
+            
+            if(triggerUpdate) updateParams();
+        }
+        
+        knob.updatePosition(val, false); 
+
+        let isKnobDragging = false;
+        let startY = 0;
+        let startVal = 0;
+
+        dial.addEventListener('mousedown', (e) => {
+            isKnobDragging = true;
+            startY = e.clientY;
+            startVal = parseFloat(knob.dataset.val);
+            document.body.style.cursor = 'ns-resize';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isKnobDragging) return;
+            let deltaY = startY - e.clientY; 
+            let range = max - min;
+            let sensitivity = range / 150; 
+            knob.updatePosition(startVal + (deltaY * sensitivity));
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isKnobDragging) {
+                isKnobDragging = false;
+                document.body.style.cursor = 'default';
+            }
+        });
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            e.preventDefault(); 
+            playBtn.click();
+        }
+    });
+
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            if (!audioCtx) initializeAudioEngine();
+            audioCtx.decodeAudioData(ev.target.result, function(buffer) {
+                audioBuffer = buffer;
+                resetViewAndLoop();
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    function initializeAudioEngine() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        window.liveProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+        window.liveProcessor.onaudioprocess = function(e) {
+            const input = e.inputBuffer.getChannelData(0);
+            const output = e.outputBuffer.getChannelData(0);
+
+            const thresh = compParams.thresh;
+            const ratio = compParams.ratio;
+            const makeup = compParams.makeup;
+            
+            const attackCoef = Math.exp(-1 / (audioCtx.sampleRate * compParams.attack));
+            const releaseCoef = Math.exp(-1 / (audioCtx.sampleRate * compParams.release));
+
+            for (let i = 0; i < input.length; i++) {
+                let sample = input[i];
+                let absSample = Math.abs(sample);
+                let sampleDb = absSample < 0.000001 ? -120 : Math.log(absSample) * LN10_20;
+
+                let targetGrDb = 0;
+                if (sampleDb > thresh) {
+                    targetGrDb = (sampleDb - thresh) * (1 - (1 / ratio));
+                }
+
+                if (targetGrDb > liveEnvGrDb) {
+                    liveEnvGrDb = attackCoef * liveEnvGrDb + (1 - attackCoef) * targetGrDb;
+                } else {
+                    liveEnvGrDb = releaseCoef * liveEnvGrDb + (1 - releaseCoef) * targetGrDb;
+                }
+
+                output[i] = sample * Math.exp(-liveEnvGrDb * DB_2_LN) * makeup;
+            }
+            
+            window.currentLiveGR = liveEnvGrDb;
+        };
+    }
+
+    function resetViewAndLoop() {
+        selStart = 0; selEnd = 1;
+        viewStart = 0; viewScale = 1; viewScaleY = 1;
+        updateParams(); 
+    }
+
+    function renderVisualWaveform() {
+        if (!audioBuffer) return;
+
+        const loopFraction = parseFloat(loopSelect.value);
+        loopDuration = audioBuffer.duration * loopFraction;
+        const totalFrames = Math.floor(audioBuffer.length * loopFraction);
+
+        if (!processedBuffer || processedBuffer.length !== totalFrames) {
+            processedBuffer = audioCtx.createBuffer(1, totalFrames, audioCtx.sampleRate);
+        }
+
+        const input = audioBuffer.getChannelData(0);
+        const output = processedBuffer.getChannelData(0);
+        
+        const thresh = compParams.thresh;
+        const ratio = compParams.ratio;
+        const makeup = compParams.makeup;
+        const attackCoef = Math.exp(-1 / (audioCtx.sampleRate * compParams.attack));
+        const releaseCoef = Math.exp(-1 / (audioCtx.sampleRate * compParams.release));
+
+        let visualEnvGrDb = 0;
+
+        for (let i = 0; i < totalFrames; i++) {
+            let sample = input[i];
+            let absSample = Math.abs(sample);
+            let sampleDb = absSample < 0.000001 ? -120 : Math.log(absSample) * LN10_20;
+
+            let targetGrDb = 0;
+            if (sampleDb > thresh) {
+                targetGrDb = (sampleDb - thresh) * (1 - (1 / ratio));
+            }
+
+            if (targetGrDb > visualEnvGrDb) {
+                visualEnvGrDb = attackCoef * visualEnvGrDb + (1 - attackCoef) * targetGrDb;
+            } else {
+                visualEnvGrDb = releaseCoef * visualEnvGrDb + (1 - releaseCoef) * targetGrDb;
+            }
+
+            output[i] = sample * Math.exp(-visualEnvGrDb * DB_2_LN) * makeup;
+        }
+
+        drawWaves();
+    }
+
+    function drawWaves() {
+        if (!audioBuffer || !processedBuffer) return;
+        waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+        
+        const totalFrames = processedBuffer.length;
+        const origData = audioBuffer.getChannelData(0);
+        const compData = processedBuffer.getChannelData(0);
+        
+        const startFrame = Math.floor(viewStart * totalFrames);
+        const visibleFrames = Math.floor(totalFrames / viewScale);
+        const step = Math.max(1, visibleFrames / waveCanvas.width);
+        const midY = waveCanvas.height / 2;
+
+        // Dark Grey Original Audio
+        waveCtx.fillStyle = '#333333';
+        for (let i = 0; i < waveCanvas.width; i++) {
+            let max = 0;
+            let frameOffset = startFrame + Math.floor(i * step);
+            if (frameOffset >= totalFrames) break;
+            
+            let limit = Math.min(Math.ceil(step), totalFrames - frameOffset);
+            for (let j = 0; j < limit; j++) {
+                let val = Math.abs(origData[frameOffset + j] || 0);
+                if (val > max) max = val;
+            }
+            waveCtx.fillRect(i, midY - (max * midY * viewScaleY), 1, max * midY * 2 * viewScaleY);
+        }
+
+        // Compressed Audio
+        waveCtx.fillStyle = '#4CAF50';
+        for (let i = 0; i < waveCanvas.width; i++) {
+            let max = 0;
+            let frameOffset = startFrame + Math.floor(i * step);
+            if (frameOffset >= totalFrames) break;
+            
+            let limit = Math.min(Math.ceil(step), totalFrames - frameOffset);
+            for (let j = 0; j < limit; j++) {
+                let val = Math.abs(compData[frameOffset + j] || 0);
+                if (val > max) max = val;
+            }
+            waveCtx.fillRect(i, midY - (max * midY * viewScaleY), 1, max * midY * 2 * viewScaleY);
+        }
+    }
+
+    // --- DARK MODE ANALOG METER ---
+    function drawAnalogMeter(targetGR) {
+        meterCtx.clearRect(0, 0, meterCanvas.width, meterCanvas.height);
+        
+        const cx = meterCanvas.width / 2;
+        const cy = meterCanvas.height + 30; // Pivot point below the canvas
+        const radius = 130;
+        
+        visualNeedleGR += (targetGR - visualNeedleGR) * 0.15; 
+
+        meterCtx.textAlign = 'center';
+        meterCtx.textBaseline = 'middle';
+        meterCtx.font = 'bold 12px sans-serif';
+
+        const maxDb = 30;
+        const minAngle = -Math.PI * 0.28; 
+        const maxAngle = -Math.PI * 0.72; 
+        const angleRange = maxAngle - minAngle;
+
+        // Draw Arc
+        meterCtx.beginPath();
+        meterCtx.arc(cx, cy, radius, maxAngle, minAngle);
+        meterCtx.strokeStyle = 'rgba(255,255,255,0.15)';
+        meterCtx.lineWidth = 2;
+        meterCtx.stroke();
+
+        const ticks = [0, 2, 4, 8, 12, 20, 30];
+        ticks.forEach(tick => {
+            let pct = tick / maxDb; 
+            let angle = minAngle + (pct * angleRange); 
+            
+            let x1 = cx + Math.cos(angle) * radius;
+            let y1 = cy + Math.sin(angle) * radius;
+            let x2 = cx + Math.cos(angle) * (radius - 12);
+            let y2 = cy + Math.sin(angle) * (radius - 12);
+            
+            meterCtx.beginPath();
+            meterCtx.moveTo(x1, y1);
+            meterCtx.lineTo(x2, y2);
+            meterCtx.strokeStyle = tick > 12 ? '#ff3333' : '#aaa';
+            meterCtx.lineWidth = tick === 0 || tick === 4 || tick === 8 || tick === 20 ? 3 : 2;
+            meterCtx.stroke();
+
+            let tx = cx + Math.cos(angle) * (radius - 24);
+            let ty = cy + Math.sin(angle) * (radius - 24);
+            meterCtx.fillStyle = tick > 12 ? '#ff3333' : '#aaa';
+            meterCtx.fillText(tick, tx, ty);
+        });
+
+        meterCtx.font = 'bold 10px sans-serif';
+        meterCtx.fillStyle = '#666';
+        meterCtx.fillText("GAIN REDUCTION", cx, cy - 85);
+        
+        // Glowing Red Needle
+        let needlePct = Math.min(1, Math.max(0, visualNeedleGR / maxDb));
+        let needleAngle = minAngle + (needlePct * angleRange);
+
+        meterCtx.beginPath();
+        meterCtx.moveTo(cx, cy - 20);
+        meterCtx.lineTo(cx + Math.cos(needleAngle) * (radius + 8), cy + Math.sin(needleAngle) * (radius + 8));
+        meterCtx.strokeStyle = '#ff3333';
+        meterCtx.lineWidth = 3;
+        meterCtx.lineCap = 'round';
+        meterCtx.shadowBlur = 10;
+        meterCtx.shadowColor = '#ff3333';
+        meterCtx.stroke();
+        
+        meterCtx.shadowBlur = 0; // Reset shadow
+
+        // Needle Shadow
+        meterCtx.beginPath();
+        meterCtx.moveTo(cx + 3, cy - 17);
+        meterCtx.lineTo(cx + 3 + Math.cos(needleAngle) * (radius + 8), cy + 3 + Math.sin(needleAngle) * (radius + 8));
+        meterCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+        meterCtx.lineWidth = 3;
+        meterCtx.stroke();
+
+        // Pivot Cover
+        meterCtx.beginPath();
+        meterCtx.arc(cx, cy - 20, 10, 0, Math.PI * 2);
+        meterCtx.fillStyle = '#111';
+        meterCtx.fill();
+        meterCtx.strokeStyle = '#333';
+        meterCtx.lineWidth = 1;
+        meterCtx.stroke();
+    }
+    
+    drawAnalogMeter(0);
+
+    playCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault(); 
+        if (!audioBuffer || !processedBuffer) return;
+
+        const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85; 
+
+        if (e.ctrlKey) {
+            viewScaleY *= zoomFactor;
+            viewScaleY = Math.max(1, Math.min(viewScaleY, 50)); 
+        } else {
+            const targetAudioPct = getAudioPosFromMouse(e);
+            
+            viewScale *= zoomFactor;
+            viewScale = Math.max(1, Math.min(viewScale, 200)); 
+
+            const rect = playCanvas.getBoundingClientRect();
+            const screenPct = (e.clientX - rect.left) / rect.width;
+            
+            viewStart = targetAudioPct - (screenPct / viewScale);
+            viewStart = Math.max(0, Math.min(viewStart, 1 - (1 / viewScale)));
+        }
+        
+        drawWaves();
+        drawPlayheadUI();
+    }, { passive: false });
+
+    function updateParams() {
+        document.getElementById('threshVal').innerText = getVal('thresh') + ' dB';
+        document.getElementById('ratioVal').innerText = getVal('ratio') + ':1';
+        document.getElementById('attackVal').innerText = getVal('attack') + ' ms';
+        document.getElementById('releaseVal').innerText = getVal('release') + ' ms';
+        document.getElementById('gainVal').innerText = (getVal('gain') > 0 ? '+' : '') + getVal('gain') + ' dB';
+
+        compParams.thresh = getVal('thresh');
+        compParams.ratio = getVal('ratio');
+        compParams.attack = getVal('attack') / 1000;
+        compParams.release = getVal('release') / 1000;
+        compParams.makeup = Math.pow(10, getVal('gain') / 20);
+
+        clearTimeout(renderTimeout);
+        renderTimeout = setTimeout(() => { renderVisualWaveform(); }, 80);
+    }
+    
+    loopSelect.addEventListener('change', () => {
+        resetViewAndLoop();
+        if (isPlaying) restartAudioAt(0);
+    });
+
+    playCanvas.addEventListener('mousedown', (e) => {
+        if (!audioBuffer) return;
+        dragStartX = getAudioPosFromMouse(e);
+        isDragging = true;
+    });
+
+    // Lag-free mouse dragging
+    playCanvas.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        let currentX = getAudioPosFromMouse(e);
+        
+        if (!isDrawPending) {
+            isDrawPending = true;
+            requestAnimationFrame(() => {
+                drawPlayheadUI(dragStartX, currentX); 
+                isDrawPending = false;
+            });
+        }
+    });
+
+    playCanvas.addEventListener('mouseup', (e) => {
+        if (!isDragging || !audioBuffer) return;
+        isDragging = false;
+        
+        let dragEndX = getAudioPosFromMouse(e);
+
+        dragStartX = Math.max(0, Math.min(1, dragStartX));
+        dragEndX = Math.max(0, Math.min(1, dragEndX));
+
+        if (Math.abs(dragStartX - dragEndX) < 0.005) {
+            let clickPos = dragStartX;
+            if (clickPos < selStart || clickPos > selEnd) {
+                selStart = 0; selEnd = 1;
+            }
+            if (isPlaying) restartAudioAt(clickPos * loopDuration);
+            else drawPlayheadUI();
+        } else {
+            selStart = Math.min(dragStartX, dragEndX);
+            selEnd = Math.max(dragStartX, dragEndX);
+            if (isPlaying) restartAudioAt(selStart * loopDuration);
+            else drawPlayheadUI();
+        }
+    });
+
+    function restartAudioAt(offsetSec) {
+        if (sourceNode) { 
+            sourceNode.stop(); 
+            sourceNode.disconnect(); 
+        }
+
+        sourceNode = audioCtx.createBufferSource();
+        sourceNode.buffer = audioBuffer; 
+
+        let regionStartSec = selStart * loopDuration;
+        let regionEndSec = selEnd * loopDuration;
+
+        sourceNode.loop = true;
+        sourceNode.loopStart = regionStartSec;
+        sourceNode.loopEnd = regionEndSec;
+
+        sourceNode.connect(window.liveProcessor);
+        window.liveProcessor.connect(audioCtx.destination);
+        
+        sourceNode.start(0, offsetSec);
+        startTime = audioCtx.currentTime - (offsetSec - regionStartSec);
+    }
+
+    playBtn.addEventListener('click', () => {
+        if (!audioBuffer) return alert("Please choose an audio file first!");
+
+        if (!isPlaying) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            let startOffset = selStart * loopDuration;
+            restartAudioAt(startOffset);
+            
+            isPlaying = true;
+            playBtn.innerText = "POWERED ON";
+            playBtn.classList.add('active');
+            
+            drawPlayheadLoop();
+        } else {
+            if (sourceNode) {
+                sourceNode.stop();
+                sourceNode.disconnect();
+                window.liveProcessor.disconnect();
+            }
+            isPlaying = false;
+            playBtn.innerText = "POWER / PLAY";
+            playBtn.classList.remove('active');
+            
+            cancelAnimationFrame(animationId);
+            drawPlayheadUI();
+            
+            let dropInterval = setInterval(() => {
+                drawAnalogMeter(0);
+                if (visualNeedleGR < 0.1) clearInterval(dropInterval);
+            }, 16);
+        }
+    });
+
+    function drawPlayheadUI(tempStartX = null, tempEndX = null) {
+        playCtx.clearRect(0, 0, playCanvas.width, playCanvas.height);
+
+        let s = selStart;
+        let e = selEnd;
+
+        if (tempStartX !== null && tempEndX !== null) {
+            s = Math.min(tempStartX, tempEndX);
+            e = Math.max(tempStartX, tempEndX);
+        }
+
+        if (s !== 0 || e !== 1) {
+            playCtx.fillStyle = 'rgba(255, 51, 51, 0.2)';
+            let startPx = audioToScreen(s);
+            let endPx = audioToScreen(e);
+            playCtx.fillRect(startPx, 0, endPx - startPx, playCanvas.height);
+        }
+
+        if (isPlaying && tempStartX === null) {
+            let regionStartSec = selStart * loopDuration;
+            let regionEndSec = selEnd * loopDuration;
+            let customLoopLength = regionEndSec - regionStartSec;
+
+            let elapsed = (audioCtx.currentTime - startTime) % customLoopLength;
+            if (elapsed < 0) elapsed = 0; 
+
+            let currentPlaySec = regionStartSec + elapsed;
+            let xPos = audioToScreen(currentPlaySec / loopDuration);
+
+            if (xPos >= 0 && xPos <= playCanvas.width) {
+                playCtx.strokeStyle = '#ff3333';
+                playCtx.lineWidth = 2;
+                playCtx.beginPath();
+                playCtx.moveTo(xPos, 0);
+                playCtx.lineTo(xPos, playCanvas.height);
+                playCtx.stroke();
+            }
+            
+            drawAnalogMeter(window.currentLiveGR || 0);
+        }
+    }
+
+    function drawPlayheadLoop() {
+        if (!isPlaying) return;
+        drawPlayheadUI();
+        animationId = requestAnimationFrame(drawPlayheadLoop);
+    }
+</script>
+</body>
+</html>
